@@ -1,0 +1,431 @@
+# KiddoScribe: Mobile Book Creator MVP Functional Specification
+
+## A. Functional Specification
+
+### 1. Product Overview
+
+KiddoScribe is a mobile application that allows parents and teachers to create personalized children's books for kids aged 3-8 using AI-generated text and images. The application offers a freemium model with limited features in the free tier and expanded capabilities in the paid subscription tier.
+
+### 2. User Journey Map
+
+```
+┌────────────┐        ┌────────────┐        ┌────────────┐        ┌────────────┐
+│ Onboarding │───────▶│   Story    │───────▶│ Generation │───────▶│   Library  │
+│    Flow    │        │   Wizard   │        │  & Editing │        │ & Reading  │
+└────────────┘        └────────────┘        └────────────┘        └────────────┘
+      │                     │                     │                     │
+      ▼                     ▼                     ▼                     ▼
+┌────────────┐        ┌────────────┐        ┌────────────┐        ┌────────────┐
+│  Parental  │        │   Wizard   │        │    Page    │        │   Export   │
+│    Gate    │        │   Steps    │        │   Editor   │        │  Options   │
+└────────────┘        └────────────┘        └────────────┘        └────────────┘
+      │                     │                     │                     │
+      ▼                     ▼                     ▼                     ▼
+┌────────────┐        ┌────────────┐        ┌────────────┐        ┌────────────┐
+│ Auth/Signup│        │  Generate  │        │ Regenerate │        │   Offline  │
+│    Login   │        │   Story    │        │   Images   │        │   Reader   │
+└────────────┘        └────────────┘        └────────────┘        └────────────┘
+```
+
+### 3. Core Feature Specifications
+
+| Feature | Description | Acceptance Criteria |
+|---------|-------------|---------------------|
+| Parental Gate | DOB verification before any PII collection | - Adult age (18+) verification<br>- Prevents underage users from creating accounts<br>- Complies with COPPA regulations |
+| Authentication | Email/password, Apple, Google via Firebase | - Secure login/signup flows<br>- Password reset functionality<br>- Account management<br>- Social auth integration |
+| Story Creation Wizard | Multi-step form to configure story parameters | - Age range selector (3-8)<br>- Theme selection<br>- Vocabulary level dropdown<br>- Optional lesson tags<br>- Template picker or free-form option |
+| AI Text Generation | Gemini 2.5 Pro integration for story text | - Consistent with selected parameters<br>- Age-appropriate content<br>- Background processing via Dramatiq<br>- Error handling and retries |
+| AI Image Generation | Gemini 2.5 Pro for image generation | - One image per page<br>- Free tier: 5 images with watermark<br>- Paid tier: Unlimited images, no watermark<br>- Queue management |
+| Story Editor | Rich text editor for page content | - Text editing capabilities<br>- Image regeneration (counts against quota)<br>- Page navigation<br>- Auto-saving |
+| Export | PDF and ePub generation | - Clean formatting with WeasyPrint<br>- ePub standard compliance<br>- S3 storage<br>- Local caching for offline access |
+| Library | Grid view of user's stories | - Filtering by status (Draft/Ready/Downloaded)<br>- Story management (delete/duplicate)<br>- Offline indicators |
+| Reader | In-app story reader | - Page navigation (swipe)<br>- Dark mode support<br>- Offline capabilities<br>- Accessibility features |
+| Subscription | Stripe integration for premium features | - Free trial period<br>- Subscription management<br>- Payment processing<br>- Restore purchases |
+
+### 4. Technical Requirements
+
+| Component | Specifications | Notes |
+|-----------|----------------|-------|
+| Frontend | React Native 0.74, Expo Router, Redux Toolkit, MMKV | Hermes engine, Bridgeless mode for improved performance |
+| Backend | FastAPI, PostgreSQL, Dramatiq, Redis | RESTful API design with proper validation |
+| Authentication | Firebase Auth, JWT tokens, SlowAPI rate limiting | Secure, standards-compliant auth system |
+| Storage | AWS S3, MMKV, React-Native-FS | Encrypted at rest, secure access |
+| Export | WeasyPrint, EbookLib | High-quality PDF and ePub generation |
+| Payment | Stripe SDK, webhook integration | Secure payment processing |
+| Deployment | Cloud Run single-container, scale-to-zero | Cost-effective hosting |
+
+### 5. Data Model
+
+| Entity | Primary Key | Foreign Keys | Key Fields | Notes |
+|--------|-------------|--------------|------------|-------|
+| User | id (UUID) | N/A | email, firebase_uid, parent_verified_at, hashed_password, is_active, is_superuser | Contains user authentication and profile data |
+| Story | id (UUID) | user_id (User) | title, age_min, age_max, theme, vocab_level, lessons, status, page_count, remaining_images | Central entity for story configuration and metadata |
+| Page | id (UUID) | story_id (Story) | page_number, text, image_url | Individual pages within a story |
+| Subscription | id (UUID) | user_id (User) | stripe_subscription_id, status, plan_id, trial_end, current_period_end | Subscription and payment information |
+
+### 6. API Contract
+
+| Endpoint | Method | Auth Required | Description | Response |
+|----------|--------|---------------|-------------|----------|
+| `/api/v1/auth/signup` | POST | No | Create new user (requires parental verification) | User object |
+| `/api/v1/auth/login/access-token` | POST | No | Authenticate user, return JWT | Token object |
+| `/api/v1/users/me` | GET | Yes | Get current user profile | User object |
+| `/api/v1/stories` | GET | Yes | List user's stories | Story[] array |
+| `/api/v1/stories` | POST | Yes | Create new story draft | Story object |
+| `/api/v1/stories/{id}` | GET | Yes | Get story by ID with pages | StoryWithPages object |
+| `/api/v1/stories/{id}/generate-text` | POST | Yes | Queue text generation | 202 Accepted |
+| `/api/v1/stories/{id}/generate-images` | POST | Yes | Queue image generation | 202 Accepted |
+| `/api/v1/stories/{id}/export/pdf` | GET | Yes | Get PDF export URL | PresignedUrl object |
+| `/api/v1/stories/{id}/export/epub` | GET | Yes | Get ePub export URL | PresignedUrl object |
+
+## B. Wireframe Diagrams
+
+### 1. Onboarding & Parental Gate
+
+```
+┌────────────────────────────────────────────────┐
+│                                                │
+│                 [HERO IMAGE]                   │
+│                                                │
+├────────────────────────────────────────────────┤
+│                                                │
+│                 KiddoScribe                    │
+│                                                │
+│    Create magical stories for young readers    │
+│                                                │
+│                     • ○ ○                      │
+│                                                │
+│             [Short description]                │
+│                                                │
+│   ┌────────────────────────────────────┐      │
+│   │        I'm a Parent/Teacher        │      │
+│   └────────────────────────────────────┘      │
+│                                                │
+│     Already have an account? Sign in here      │
+│                                                │
+└────────────────────────────────────────────────┘
+
+                    ↓↓↓↓↓
+
+┌────────────────────────────────────────────────┐
+│                                                │
+│              Verify Your Age                   │
+│                                                │
+│   Before we begin, please verify you are an    │
+│               adult (18+).                     │
+│                                                │
+│   ┌────────┐    ┌────────┐    ┌────────┐      │
+│   │ Month  │    │  Day   │    │  Year  │      │
+│   └────────┘    └────────┘    └────────┘      │
+│                                                │
+│   ┌────────────────────────────────────┐      │
+│   │              Continue              │      │
+│   └────────────────────────────────────┘      │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 2. Story Wizard (Multi-step)
+
+```mermaid
+graph TD
+    A[Step 1: Basics] -->|Next| B[Step 2: Lessons & Template]
+    B -->|Next| C[Step 3: Summary]
+    C -->|Generate Story| D[Progress Screen]
+    A -->|Cancel| E[Library]
+    B -->|Back| A
+    B -->|Cancel| E
+    C -->|Back| B
+    C -->|Cancel| E
+    D -->|Complete| F[Page Editor]
+```
+
+#### Step 1: Basics
+```
+┌────────────────────────────────────────────────┐
+│ ← Cancel                  Story Wizard  1/3 →  │
+├────────────────────────────────────────────────┤
+│                                                │
+│ Age Range                                      │
+│                                                │
+│ 3 ○───────●─────────○ 8                       │
+│                                                │
+│ Theme                                          │
+│                                                │
+│ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐       │
+│ │Space│ │Ocean│ │Farm │ │Magic│ │More+│       │
+│ └─────┘ └─────┘ └─────┘ └─────┘ └─────┘       │
+│                                                │
+│ Vocabulary Level                               │
+│ ┌────────────────────────┐                    │
+│ │ Beginner         ▼     │                    │
+│ └────────────────────────┘                    │
+│                                                │
+│                                                │
+│ ┌────────────────────────────────────────┐    │
+│ │                 Next                    │    │
+│ └────────────────────────────────────────┘    │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+#### Step 2: Lessons & Template
+```
+┌────────────────────────────────────────────────┐
+│ ← Back                    Story Wizard  2/3 →  │
+├────────────────────────────────────────────────┤
+│                                                │
+│ Lessons (Optional)                             │
+│                                                │
+│ ┌──────┐ ┌────────┐ ┌────────┐ ┌─────────┐    │
+│ │Colors│ │Counting│ │Letters │ │Emotions │    │
+│ └──────┘ └────────┘ └────────┘ └─────────┘    │
+│                                                │
+│ Template                                       │
+│                                                │
+│ ┌─────────┐ ┌─────────┐ ┌─────────┐           │
+│ │         │ │         │ │         │           │
+│ │Adventure│ │Bedtime  │ │Learning │           │
+│ │         │ │         │ │         │           │
+│ └─────────┘ └─────────┘ └─────────┘           │
+│                                                │
+│ ┌──────────────┐   ┌───────────────────┐      │
+│ │     Back     │   │       Next        │      │
+│ └──────────────┘   └───────────────────┘      │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+#### Step 3: Summary
+```
+┌────────────────────────────────────────────────┐
+│ ← Back                    Story Wizard  3/3    │
+├────────────────────────────────────────────────┤
+│                                                │
+│              Story Summary                     │
+│                                                │
+│ Title: [Untitled Space Adventure]              │
+│                                                │
+│ Age Range: 4-6 years                           │
+│ Theme: Space                                   │
+│ Vocabulary: Beginner                           │
+│ Lessons: Counting                              │
+│ Template: Adventure                            │
+│                                                │
+│ Free Tier: 5 images remaining                  │
+│                                                │
+│ ┌──────────────┐   ┌───────────────────┐      │
+│ │     Back     │   │  Generate Story   │      │
+│ └──────────────┘   └───────────────────┘      │
+│                                                │
+│                 Upgrade to Pro                 │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 3. Progress Screen
+
+```
+┌────────────────────────────────────────────────┐
+│                                                │
+│          Creating Your Story...                │
+│                                                │
+│ [Untitled Space Adventure]                     │
+│                                                │
+│ ┌──────────────────────────────────────────┐  │
+│ │●●●●●●●○○○○○○○○○○○○○○○○○○○○○○○○○○○○○○○○│  │
+│ └──────────────────────────────────────────┘  │
+│                                                │
+│ ┌─────────┐┌─────────────┐┌─────────────┐┌────┐│
+│ │ Draft   ││ Generating  ││ Generating  ││Ready││
+│ │         ││    Text     ││   Images    ││    ││
+│ │ ✓       ││ [CURRENT]   ││             ││    ││
+│ └─────────┘└─────────────┘└─────────────┘└────┘│
+│                                                │
+│              Estimated Time: 2:30              │
+│                                                │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 4. Page Editor
+
+```
+┌────────────────────────────────────────────────┐
+│ ← Back      Untitled Space Adventure    Save   │
+├────────────────────────────────────────────────┤
+│                                                │
+│ ┌────────────────────────────────────────────┐ │
+│ │                                            │ │
+│ │             [STORY IMAGE]                  │ │
+│ │                                            │ │
+│ │                                            │ │
+│ └────────────────────────────────────────────┘ │
+│                                                │
+│ ┌────────────────────────────────────────────┐ │
+│ │                                            │ │
+│ │ Once upon a time, in a galaxy far away,    │ │
+│ │ there lived a little astronaut named Alex. │ │
+│ │                                            │ │
+│ │ Alex loved counting stars and planets      │ │
+│ │ as they traveled through space.            │ │
+│ │                                            │ │
+│ └────────────────────────────────────────────┘ │
+│                                                │
+│ ┌──────────┐  ┌──────────────────┐  ┌────────┐ │
+│ │ Previous │  │ Regenerate Image │  │  Next  │ │
+│ │   Page   │  │    (4 left)      │  │  Page  │ │
+│ └──────────┘  └──────────────────┘  └────────┘ │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 5. Export Screen
+
+```
+┌────────────────────────────────────────────────┐
+│ ← Back      Export Options                     │
+├────────────────────────────────────────────────┤
+│                                                │
+│            [Book Cover Preview]                │
+│                                                │
+│            Untitled Space Adventure            │
+│                                                │
+│ Export Format                                  │
+│                                                │
+│ ○ PDF Document                                 │
+│ ● EPUB E-Book                                  │
+│                                                │
+│ Options                                        │
+│                                                │
+│ ☐ Include watermark                            │
+│   ⓘ Remove watermark with Pro subscription     │
+│                                                │
+│ ┌────────────────────────────────────────┐    │
+│ │              Export Now                 │    │
+│ └────────────────────────────────────────┘    │
+│                                                │
+│              Upgrade to Pro                    │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 6. Library Screen
+
+```
+┌────────────────────────────────────────────────┐
+│ My Library                         +  ⚙️       │
+├────────────────────────────────────────────────┤
+│                                                │
+│ Filter: ● All  ○ Ready  ○ Draft  ○ Downloaded │
+│                                                │
+│ ┌───────────────┐    ┌───────────────┐        │
+│ │               │    │               │        │
+│ │  [COVER 1]    │    │  [COVER 2]    │        │
+│ │               │    │               │        │
+│ │ Space         │    │ Ocean         │        │
+│ │ Adventure     │    │ Friends       │        │
+│ │               │    │               │        │
+│ │ Ready ✓       │    │ Draft...      │        │
+│ └───────────────┘    └───────────────┘        │
+│                                                │
+│ ┌───────────────┐    ┌───────────────┐        │
+│ │               │    │               │        │
+│ │  [COVER 3]    │    │     [+]       │        │
+│ │               │    │               │        │
+│ │ Counting      │    │ Create New    │        │
+│ │ Stars         │    │ Story         │        │
+│ │               │    │               │        │
+│ │ Downloaded ↓  │    │               │        │
+│ └───────────────┘    └───────────────┘        │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 7. Paywall/Settings Screen
+
+```
+┌────────────────────────────────────────────────┐
+│ ← Back      Settings & Pro                     │
+├────────────────────────────────────────────────┤
+│                                                │
+│            [Premium Illustration]              │
+│                                                │
+│             Unlock Premium Features            │
+│                                                │
+│ ✓ Unlimited image generations                  │
+│ ✓ No watermarks on exports                     │
+│ ✓ Priority story generation                    │
+│ ✓ Advanced templates                           │
+│                                                │
+│ ┌────────────────────────────────────────┐    │
+│ │  KiddoScribe Pro - $5.99/month         │    │
+│ │  7-day free trial                      │    │
+│ └────────────────────────────────────────┘    │
+│                                                │
+│ ┌────────────────────────────────────────┐    │
+│ │  Subscribe Now                          │    │
+│ └────────────────────────────────────────┘    │
+│                                                │
+│            Restore Purchases                   │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+## C. Risk Matrix with Mitigations
+
+| Risk | Probability | Impact | Severity | Mitigation Strategy |
+|------|------------|--------|----------|---------------------|
+| **Technical Risks** |  |  |  |  |
+| AI image generation fails to meet quality standards | Medium | High | High | - Implement quality checks and fallbacks<br>- Add manual review option for critical failures<br>- Create default images for common themes |
+| Export formatting issues with WeasyPrint | High | Medium | High | - Extensive testing with different content lengths<br>- Custom CSS for handling page breaks<br>- Fallback simple export option |
+| Performance issues on older mobile devices | Medium | Medium | Medium | - Performance profiling during development<br>- Implement progressive loading<br>- Optimize image cache management |
+| **Compliance Risks** |  |  |  |  |
+| COPPA compliance verification failure | Low | Critical | High | - Legal review of parental gate implementation<br>- Consult with COPPA compliance experts<br>- Document all PII handling practices |
+| App Store rejection due to privacy concerns | Medium | High | High | - Thorough privacy policy documentation<br>- Implement App Store privacy labels correctly<br>- Pre-submission review with App Store guidelines |
+| Data protection compliance issues | Low | High | Medium | - Implement strict encryption for all PII<br>- Regular security audits<br>- Minimize PII collection to essentials only |
+| **User Experience Risks** |  |  |  |  |
+| Users find story generation too slow | High | Medium | High | - Set clear expectations on progress screen<br>- Add engaging waiting animations<br>- Implement background processing notifications |
+| Confusion during story creation wizard | Medium | Medium | Medium | - User testing of wizard flow<br>- Add contextual help tooltips<br>- Implement progress indicators |
+| Difficulty with rich text editing on mobile | High | Medium | High | - Simplified editing controls<br>- Preview mode for complex formatting<br>- Auto-formatting capabilities |
+| **Business Risks** |  |  |  |  |
+| Low conversion rate to paid tier | Medium | High | High | - Improve value proposition messaging<br>- Implement targeted prompts at key moments<br>- Offer limited-time promotions |
+| High AI usage costs as user base grows | Medium | High | High | - Implement usage caps and throttling<br>- Optimize prompt engineering<br>- Consider alternative AI providers |
+| Cloud Run egress costs exceed projections | Low | Medium | Medium | - Implement client-side caching strategy<br>- Optimize image sizes<br>- Consider CDN for high-traffic content |
+
+## D. Next-Sprint Task Board (14 Days)
+
+| ID | Task | Priority | Effort | Assigned To | Dependencies | Status |
+|----|------|----------|--------|-------------|--------------|--------|
+| **Backend Development** |  |  |  |  |  |  |
+| BE-01 | Complete FastAPI authentication endpoints | High | 2d | Backend Dev | - | To Do |
+| BE-02 | Implement rate limiting middleware | High | 1d | Backend Dev | - | To Do |
+| BE-03 | Set up database migrations with Alembic | High | 1d | Backend Dev | - | To Do |
+| BE-04 | Configure Dramatiq with Redis for background jobs | High | 2d | Backend Dev | - | To Do |
+| BE-05 | Implement story text generation service | High | 3d | Backend Dev | BE-04 | To Do |
+| BE-06 | Implement image generation service | High | 3d | Backend Dev | BE-04, BE-05 | To Do |
+| BE-07 | Create PDF export service with WeasyPrint | Medium | 2d | Backend Dev | - | To Do |
+| BE-08 | Create ePub export service with EbookLib | Medium | 2d | Backend Dev | - | To Do |
+| BE-09 | Set up S3 integration for exports | Medium | 1d | Backend Dev | BE-07, BE-08 | To Do |
+| BE-10 | Implement Stripe webhook handlers | Medium | 2d | Backend Dev | - | To Do |
+| **Frontend Development** |  |  |  |  |  |  |
+| FE-01 | Complete onboarding and parental gate screens | High | 2d | Frontend Dev | - | To Do |
+| FE-02 | Implement Firebase authentication integration | High | 2d | Frontend Dev | - | To Do |
+| FE-03 | Create story wizard UI with all steps | High | 3d | Frontend Dev | - | To Do |
+| FE-04 | Build progress screen with status indicators | Medium | 1d | Frontend Dev | FE-03 | To Do |
+| FE-05 | Implement page editor with rich text support | High | 3d | Frontend Dev | - | To Do |
+| FE-06 | Create library screen with filtering | Medium | 2d | Frontend Dev | - | To Do |
+| FE-07 | Build story reader with swipe navigation | Medium | 2d | Frontend Dev | FE-06 | To Do |
+| FE-08 | Implement export screen | Low | 1d | Frontend Dev | - | To Do |
+| FE-09 | Create paywall/subscription screen | Medium | 1d | Frontend Dev | - | To Do |
+| FE-10 | Set up offline storage with MMKV | High | 1d | Frontend Dev | - | To Do |
+| **Integration & Testing** |  |  |  |  |  |  |
+| QA-01 | Create automated API tests for core endpoints | Medium | 1d | QA | BE-01 | To Do |
+| QA-02 | Test story generation flow end-to-end | High | 1d | QA | BE-05, BE-06, FE-04 | To Do |
+| QA-03 | Verify export functionality and quality | Medium | 1d | QA | BE-07, BE-08, BE-09 | To Do |
+| QA-04 | Test subscription flow with Stripe test environment | Medium | 1d | QA | BE-10, FE-09 | To Do |
+| QA-05 | Perform usability testing of wizard flow | High | 1d | QA | FE-03 | To Do |
+| **DevOps & Deployment** |  |  |  |  |  |  |
+| OP-01 | Set up Cloud Run container deployment | High | 1d | DevOps | - | To Do |
+| OP-02 | Configure CI/CD pipeline | Medium | 1d | DevOps | OP-01 | To Do |
+| OP-03 | Set up monitoring and alerting | Low | 1d | DevOps | OP-01 | To Do |
