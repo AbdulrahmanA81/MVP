@@ -1,0 +1,33 @@
+1. Key Decisions
+Technology Stack: Proceeded with React Native (v0.74) using the Expo framework for the frontend, as specified.
+Development Order: Prioritized installing core dependencies (redux, mmkv, firebase, stripe, etc.) before setting up the navigation structure.
+Navigation: Implemented navigation using expo-router, creating layouts and placeholder screens for major flows (Tabs, Onboarding, Wizard, Editor, Settings).
+Initial Screen Implementation: Started UI development with the Onboarding screen (onboarding.tsx), including a basic structure for the initial view and the subsequent Date of Birth (DOB) parental gate, based on the wireframes.
+Entry Point Configuration: Corrected the default Expo project entry point (index.js / App.js) to use expo-router/entry in package.json for proper Expo Router integration.
+Connectivity Troubleshooting: Switched to using Expo Tunnel (--tunnel) for the development server connection to address issues likely related to WSL networking and Expo Go connectivity.
+Tunnel Dependency: Manually installed @expo/ngrok globally using sudo when the automatic installation failed, enabling the tunnel connection.
+2. Action Items
+Verify App Connection & Display (Owner: User, Due: Now): Confirm if the app now successfully connects and displays the basic Onboarding screen via Expo Go using the latest QR code generated with the --tunnel option.
+Implement Redux Store & Provider (Owner: AI, Due: Next Steps): Set up the Redux Toolkit store and wrap the root layout (app/_layout.tsx) with the Redux Provider.
+Implement Onboarding Logic (Owner: AI, Due: TBD - During Onboarding Dev):
+Replace placeholder DOB input with a proper Date Picker component.
+Implement actual DOB validation logic (COPPA compliance).
+Implement navigation to sign-in/sign-up flows or the main app after successful onboarding/DOB verification.
+Implement the actual Carousel UI on the initial onboarding view.
+Configure Firebase (Owner: AI, Due: TBD - Before Auth/Backend Interaction): Set up Firebase configuration within the app.
+Configure MMKV Storage (Owner: AI, Due: TBD - When needed for persistence): Integrate MMKV for storing preferences or session data.
+Continue Screen Implementation (Owner: AI, Due: Ongoing): Proceed with implementing the UI and logic for other screens based on wireframes and user priority (e.g., Story Wizard, Library).
+3. Open Questions
+Is the app now visible and functioning correctly on your phone using the Expo Tunnel connection?
+What specific area or screen would you like to focus on next after verifying the Onboarding screen loads? (e.g., Redux setup, Firebase config, Story Wizard UI, Library UI)?
+4. Project Updates
+Scope: No changes to the original project scope as defined in the provided Functional Specification.
+Spec Changes: No modifications have been made to the Functional Specification document.
+Development Progress:
+Project initialized (kiddoscribe-app).
+Core frontend dependencies installed.
+Expo Router navigation structure is in place with placeholder screens.
+Basic Onboarding screen UI (including DOB gate structure) implemented in app/onboarding.tsx.
+Project entry point configured correctly for Expo Router.
+Development server connectivity issues addressed by using Expo Tunnel.
+The app should now be runnable via Expo Go for initial viewing.
